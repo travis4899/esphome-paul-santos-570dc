@@ -1,195 +1,301 @@
+# Paul Santos 570 DC — ESPHome / Home Assistant
 
-# ESPHome – Paul Santos 570 DC
+Projet d'intégration d'une VMC double flux **Paul Santos 570 DC** dans
+[Home Assistant](https://www.home-assistant.io/) à l'aide d'un
+[ESP32-C3 Super Mini](https://www.espressif.com/).
 
-Intégration d'une VMC double flux **Paul Santos 570 DC** dans Home Assistant à l'aide d'un ESP32-C3 et d'ESPHome, via le protocole série ComfoAir.
+L'objectif est de superviser et de piloter la VMC depuis Home Assistant,
+tout en conservant autant que possible le fonctionnement de sa commande
+d'origine.
 
-> **Statut : développement**
+> **État du projet : expérimental**
 >
-> Le projet est en cours de développement et de validation sur une Paul Santos 570 DC.
-> Les commandes disponibles, les états remontés et la compatibilité matérielle doivent être confirmés sur l'installation réelle.
+> Le matériel retenu et les premières pistes logicielles sont identifiés.
+> Le protocole, le câblage définitif, les commandes disponibles et les
+> fonctions exposées dans Home Assistant restent à confirmer par des essais
+> sur la VMC.
 
-## Objectif du projet
+## Objectifs
 
-L'objectif est de piloter et de superviser la VMC Paul Santos 570 DC depuis Home Assistant, sans remplacer son électronique ni compromettre ses fonctions de régulation et de sécurité d'origine.
+- Intégrer la VMC à Home Assistant grâce à ESPHome.
+- Lire les informations disponibles sur la liaison série.
+- Exposer les informations pertinentes sous forme de capteurs.
+- Permettre, si le protocole le confirme, de modifier les réglages depuis
+  Home Assistant.
+- Préserver la commande physique d'origine.
+- Documenter le matériel, le protocole et les adaptations nécessaires.
 
-Le projet vise notamment à :
-
-- récupérer les états et les mesures disponibles ;
-- consulter les températures et les paramètres de fonctionnement ;
-- commander les niveaux de ventilation ;
-- gérer les modes et les consignes lorsque le protocole le permet ;
-- intégrer les fonctions disponibles dans Home Assistant ;
-- conserver, autant que possible, le clavier de commande d'origine opérationnel.
-
-L'intégration repose sur un ESP32-C3 exécutant ESPHome et communiquant avec la VMC par une liaison série.
-
-## Origine et références
-
-Ce projet s'appuie sur des travaux et documentations existants autour du protocole ComfoAir.
-
-### Projets existants
-
-- [julianpas/esphome-comfoair](https://github.com/julianpas/esphome-comfoair)  
-  Composant ESPHome servant de base au développement de l'intégration.
-
-- [mhop/fhem-mirror – 98_ComfoAir.pm](https://github.com/mhop/fhem-mirror/blob/master/fhem/FHEM/98_ComfoAir.pm)  
-  Implémentation du protocole ComfoAir pour FHEM. Cette source constitue une référence pour les commandes, les réponses et le décodage des données.
-
-### Documentation du protocole
-
-- [Protokollbeschreibung ComfoAir (PDF)](http://www.see-solutions.de/sonstiges/Protokollbeschreibung_ComfoAir.pdf)
-
-Cette documentation décrit le protocole série ComfoAir et sert de référence pour comprendre les échanges avec la VMC.
-
-Les commandes et les fonctions documentées dans ces projets ne sont pas nécessairement toutes compatibles avec la Santos 570 DC. Elles doivent être vérifiées sur l'équipement réel.
-
-Les licences des projets sources doivent être consultées avant toute réutilisation ou redistribution de leur code.
+Les fonctions réellement disponibles dépendront des commandes prises en
+charge par le contrôleur de la VMC.
 
 ## Matériel
 
-### Matériel principal
+### VMC
 
-- VMC double flux Paul Santos 570 DC.
+- Modèle : Paul Santos 570 DC.
+- Commande d'origine : clavier à membrane.
+- Connecteur X6 : sérigraphié `RS232 - KFB`, avec les bornes `12V`, `TX`,
+  `RX` et `GND`.
+- Connecteur X8 : connecteur DB9 sérigraphié `RS232 - PC`.
+
+Le rôle exact des deux interfaces et leurs niveaux électriques doivent être
+confirmés avant le raccordement de l'ESP32.
+
+### Microcontrôleur
+
 - ESP32-C3 Super Mini.
-- Convertisseur abaisseur DC-DC 12 V vers 5 V.
-- Interface électrique adaptée à la liaison série utilisée.
-- Câblage et connecteurs adaptés au montage définitif.
+- Connexion Wi-Fi au réseau local.
+- Firmware ESPHome.
+- Intégration à Home Assistant.
 
-### Interface de communication
+L'ESP32-C3 est utilisé pour sa compacité et sa compatibilité avec ESPHome.
+Le Wi-Fi suffit pour cette intégration ; aucune fonction Zigbee n'est
+nécessaire au projet actuel.
 
-Deux interfaces sont présentes sur la carte de la VMC :
+### Adaptation série : MAX3232
 
-- **X6 – RS232-KFB** : liaison avec le clavier à membrane d'origine.
-- **X8 – RS232-PC (DB9)** : interface série destinée à la communication avec un ordinateur.
+Un **MAX3232** est prévu pour assurer l'adaptation électrique entre une
+véritable liaison RS-232 et l'UART TTL de l'ESP32-C3.
 
-Le port DB9 est la première interface envisagée pour le développement, afin de limiter les modifications du câblage d'origine.
+Le MAX3232 ne doit être utilisé que si les niveaux électriques de
+l'interface choisie sont bien ceux d'une liaison RS-232.
 
-Le raccordement au clavier via X6 reste une piste alternative, notamment si certaines fonctions ne sont pas accessibles par le port PC.
+Attention :
+- Ne jamais raccorder directement une liaison RS-232 aux GPIO de l'ESP32.
+- Ne pas supposer que les bornes TX et RX du connecteur X6 sont en niveaux
+  TTL ou RS-232 sur la seule base de leur nom.
+- Vérifier le brochage du DB9 X8 avant tout raccordement.
+- Vérifier les tensions et la masse avec la documentation et des mesures
+  adaptées avant de connecter le matériel.
 
-Le brochage, les niveaux électriques et les possibilités de commande de chaque interface doivent être confirmés avant raccordement.
+Le MAX3232 assure une adaptation de niveaux électriques ; il ne convertit
+pas un protocole propriétaire en un autre protocole.
 
 ### Alimentation
 
-L'alimentation du montage est prévue à partir d'une source 12 V de la VMC, sous réserve de vérifier sa disponibilité et son courant maximal.
+Un convertisseur abaisseur DC-DC a été retenu :
 
-Un convertisseur DC-DC abaisseur fournit le 5 V nécessaire à la carte ESP32-C3.
+- Produit acheté : [convertisseur abaisseur DC-DC sur Amazon.fr](https://www.amazon.fr/dp/B0HFJYQ8WL)
+- Référence Amazon : `B0HFJYQ8WL`
 
-**Ne jamais raccorder directement une liaison RS232 aux GPIO de l'ESP32.** Une interface électrique adaptée est indispensable. Le brochage et les tensions doivent être vérifiés avant la mise sous tension du montage.
+Il est destiné à fournir une alimentation adaptée à l'ESP32-C3 à partir
+d'une source de tension supérieure, sous réserve de confirmer les
+caractéristiques du module et la tension disponible sur la VMC.
 
-## Communication série
+Avant le montage définitif :
+- vérifier la plage de tension d'entrée du convertisseur ;
+- régler et mesurer la tension de sortie avant de raccorder l'ESP32 ;
+- vérifier que le courant disponible est suffisant ;
+- respecter les polarités ;
+- vérifier que la sortie choisie correspond à l'entrée d'alimentation
+  autorisée par la carte ESP32-C3 utilisée.
 
-Les paramètres série relevés dans la documentation du protocole sont :
+Ne pas considérer la borne `12V` du connecteur X6 comme une alimentation
+disponible pour le projet avant d'avoir confirmé sa fonction, sa capacité
+en courant et ses conditions d'utilisation.
 
-| Paramètre | Valeur |
-|---|---|
-| Débit | 9600 bauds |
-| Bits de données | 8 |
-| Parité | Aucune |
-| Bits de stop | 1 |
-| Format | 9600 8N1 |
+## Interfaces de communication
 
-Ces paramètres constituent la configuration de départ. Ils doivent être confirmés sur l'interface effectivement utilisée.
+Deux connecteurs sont présents sur la carte de la VMC.
 
-Le protocole ComfoAir définit les commandes, les réponses et le format des données échangées. Le composant ESPHome doit gérer l'émission des requêtes, la réception des réponses, leur validation et le décodage des valeurs.
+| Connecteur | Sérigraphie | Informations disponibles |
+| --- | --- | --- |
+| X6 | `RS232 - KFB` | Bornes `12V`, `TX`, `RX`, `GND` |
+| X8 | `RS232 - PC` | Connecteur DB9 |
 
-## Architecture logicielle
+Le connecteur X8 est une première piste pour communiquer avec la VMC.
+Le connecteur X6 constitue une autre piste, potentiellement liée à la
+commande d'origine.
 
-Le projet utilise un composant externe ESPHome, écrit en Python et en C++.
+Le choix définitif sera fait après vérification du brochage, des niveaux
+électriques et des fonctions réellement accessibles sur chaque interface.
 
-- **Python** : déclaration et validation de la configuration ESPHome.
-- **C++** : gestion de la communication série, des trames du protocole et des données.
-- **YAML** : configuration de l'ESP32-C3 et des entités exposées à Home Assistant.
+### Préserver la commande d'origine
 
-Organisation envisagée :
+La priorité est de ne pas perturber le clavier à membrane.
 
-```text
-components/
-└── comfoair/
-    ├── __init__.py
-    ├── comfoair.h
-    ├── comfoair.cpp
-    ├── sensor.py
-    ├── switch.py
-    └── select.py
+Les premiers essais devront privilégier l'observation passive des échanges,
+sans émission de commandes depuis l'ESP32.
 
-example/
-└── santos570dc.yaml
+Un raccordement en parallèle ne sera envisagé qu'après avoir confirmé
+l'absence de risque électrique et les conditions de partage de la liaison.
+Deux équipements qui émettent simultanément sur la même ligne TX peuvent
+entrer en conflit.
 
-README.md
-LICENSE
-```
+## Protocole série
 
-Cette structure pourra évoluer selon l'organisation réelle du composant repris et les besoins de l'intégration.
+La documentation de protocole ComfoAir identifiée comme piste de travail
+indique les paramètres suivants :
 
-## Fonctions envisagées
+- Débit : `9600 bauds`
+- Bits de données : `8`
+- Parité : aucune
+- Bits d'arrêt : `1`
 
-Les fonctions suivantes sont des objectifs du projet. Leur disponibilité dépend du protocole, du firmware de la VMC et de leur validation sur une Santos 570 DC.
+Soit **9600 bauds, 8N1**.
 
-### Supervision
+Ces paramètres constituent une hypothèse de départ pour les essais. Ils ne
+sont pas encore confirmés pour chaque interface du Paul Santos 570 DC.
 
-- Lecture des températures disponibles.
-- Lecture des niveaux et états de ventilation.
-- Lecture des paramètres de fonctionnement.
-- Lecture des informations de maintenance et des heures de fonctionnement, si disponibles.
-- Lecture des états du bypass et de la protection antigel, si exposés par le protocole.
-- Remontée des erreurs et des défauts, si disponibles.
+Documentation consultée :
 
-### Commande
+- [Description du protocole ComfoAir (PDF)](http://www.see-solutions.de/sonstiges/Protokollbeschreibung_ComfoAir.pdf)
 
-- Modification du niveau de ventilation.
-- Activation d'un mode boost ou d'une vitesse temporaire, si pris en charge.
-- Modification de la consigne de confort, si prise en charge.
-- Accès aux autres paramètres documentés et compatibles.
+La compatibilité de ce protocole avec le modèle Santos devra être vérifiée
+par l'analyse des échanges et des réponses réelles de la VMC.
 
-Aucune commande ne sera considérée comme fonctionnelle avant d'avoir été testée sur la VMC.
+## Sources logicielles et crédits
 
-## Installation
+Ce projet s'appuie sur des travaux existants autour du protocole série
+ComfoAir et de son intégration à ESPHome.
 
-Les instructions d'installation seront complétées après validation du composant et de sa configuration.
+### Composant ESPHome de départ
 
-Le principe prévu est d'ajouter le dépôt comme composant externe dans ESPHome, puis de configurer l'UART de l'ESP32-C3 et les entités souhaitées.
+- Dépôt utilisé comme point de départ :
+  [julianpas/esphome-comfoair](https://github.com/julianpas/esphome-comfoair)
+- Projet d'origine :
+  [wichers/esphome-comfoair](https://github.com/wichers/esphome-comfoair)
 
-La configuration définitive devra notamment préciser :
+Le projet de Julian Pas adapte le composant d'origine pour permettre
+notamment le partage de la liaison série avec une commande ComfoSense.
+Le code existant sert de base d'étude et d'adaptation ; la compatibilité
+avec le Paul Santos 570 DC n'est pas présumée.
 
-- les GPIO RX et TX retenus ;
-- l'interface électrique utilisée ;
-- le mode de communication ;
-- les options et les entités prises en charge.
+### Référence complémentaire
 
-## Feuille de route
+- [Module FHEM 98_ComfoAir.pm](https://github.com/mhop/fhem-mirror/blob/master/fhem/FHEM/98_ComfoAir.pm)
 
-- [ ] Étudier le composant ESPHome existant.
-- [ ] Vérifier les licences et les conditions de réutilisation.
-- [ ] Confirmer le brochage et les niveaux électriques de l'interface série.
-- [ ] Valider l'alimentation 12 V vers 5 V.
-- [ ] Compiler le composant sur ESP32-C3.
-- [ ] Établir une communication série fiable.
-- [ ] Valider une première commande de lecture.
-- [ ] Vérifier les températures et les états remontés.
-- [ ] Ajouter les capteurs Home Assistant.
-- [ ] Ajouter les commandes de ventilation.
-- [ ] Tester la coexistence avec le clavier d'origine.
-- [ ] Documenter le câblage définitif et les fonctions validées.
+Ce module constitue une source complémentaire pour étudier le protocole,
+les commandes et les réponses possibles. Il ne s'agit pas d'un composant
+ESPHome directement réutilisable sans adaptation.
 
-## Sécurité et précautions
+### Attribution
 
-Ce projet intervient sur un équipement de ventilation disposant de sa propre régulation.
-
-- Ne pas modifier les sécurités internes de la VMC.
-- Ne pas perturber les protections antigel ou les régulations d'origine.
-- Ne pas raccorder directement les GPIO de l'ESP32 à une interface RS232.
-- Vérifier les tensions et le brochage avant tout raccordement.
-- Commencer par les lectures non destructives avant d'essayer des commandes.
-- Conserver le fonctionnement du clavier d'origine autant que possible.
-
-Le montage doit être réalisé de manière à ne pas empêcher le fonctionnement normal de la ventilation en cas de panne de l'ESP32 ou de perte de communication.
-
-## Contributions et retours
-
-Les retours d'expérience, les corrections et les tests sur d'autres équipements compatibles avec le protocole ComfoAir sont les bienvenus.
-
-Les informations sur le modèle exact de VMC, le firmware, le câblage et les commandes effectivement testées sont particulièrement utiles.
+Les auteurs des projets d'origine conservent leurs droits sur leurs
+contributions respectives. Les adaptations propres à ce dépôt devront
+être identifiées clairement, sans supprimer les mentions de copyright
+ni les avis de licence existants.
 
 ## Licence
 
-À définir après vérification des licences des projets sources et des conditions de réutilisation du code.
+Le composant ESPHome de départ est publié sous **GNU General Public License
+v3.0 (GPL-3.0)**.
+
+Le code dérivé de ce composant doit respecter les obligations de cette
+licence. Le dépôt doit notamment conserver les mentions de droits d'auteur
+et de licence, identifier les modifications apportées et fournir le texte
+de la licence.
+
+Le fichier `LICENSE` du dépôt doit contenir le texte intégral de la GPL-3.0,
+en conservant les mentions pertinentes du projet d'origine.
+
+Le module FHEM cité en référence annonce une licence GPL-2.0 ou, au choix,
+toute version ultérieure. Toute reprise effective de code de ce module
+devra être documentée, avec conservation des attributions et vérification
+des conditions applicables aux portions reprises.
+
+Les fichiers de code nouveaux ou modifiés distribués dans le cadre de ce
+projet dérivé seront publiés conformément à la GPL-3.0, sous réserve de
+vérifier les licences des éventuelles autres dépendances.
+
+Le document de protocole cité ci-dessus constitue une source distincte ;
+ses conditions de réutilisation restent à vérifier.
+
+## Architecture logicielle envisagée
+
+L'intégration sera réalisée sous la forme d'un composant externe ESPHome,
+avec une configuration YAML propre à la VMC.
+
+Organisation envisagée :
+
+    components/
+    └── comfoair/
+        ├── __init__.py
+        ├── comfoair.h
+        └── comfoair.cpp
+
+    example/
+    └── santos570dc.yaml
+
+    README.md
+    LICENSE
+
+Cette structure est indicative et pourra évoluer en fonction du composant
+de départ effectivement conservé et des fonctionnalités ajoutées.
+
+Le code du composant sera chargé de :
+- gérer la liaison UART ;
+- envoyer les requêtes nécessaires ;
+- analyser les réponses reçues ;
+- exposer les informations et commandes prises en charge par le protocole.
+
+La configuration YAML définira les broches, les paramètres de liaison,
+les capteurs et les commandes disponibles.
+
+## Fonctionnalités envisagées
+
+Les fonctionnalités suivantes sont des objectifs, pas des capacités déjà
+validées sur le Paul Santos 570 DC.
+
+### Supervision
+
+Selon les informations accessibles dans le protocole :
+- lecture de l'état de fonctionnement ;
+- lecture du mode ou du niveau de ventilation ;
+- lecture éventuelle des vitesses de ventilateurs ;
+- lecture des alarmes ou informations de maintenance disponibles.
+
+### Commande
+
+Si les commandes correspondantes sont identifiées et validées :
+- modification du niveau de ventilation ;
+- changement de mode ;
+- accès aux autres réglages explicitement pris en charge par la VMC.
+
+Aucune commande ne sera publiée dans Home Assistant avant d'avoir été
+identifiée et testée de manière fiable.
+
+## Plan de développement
+
+1. Étudier le brochage des connecteurs X6 et X8.
+2. Confirmer les niveaux électriques et le rôle de chaque interface.
+3. Réaliser un raccordement série adapté, avec MAX3232 si l'interface est
+   réellement en RS-232.
+4. Vérifier l'alimentation de l'ESP32-C3 et du convertisseur DC-DC.
+5. Observer les échanges série sans perturber la commande d'origine.
+6. Identifier les trames et les réponses du contrôleur.
+7. Adapter le composant ESPHome existant au modèle Santos.
+8. Exposer progressivement les capteurs dans Home Assistant.
+9. Tester les commandes, si le protocole le permet.
+10. Documenter les résultats, les limitations et le câblage validé.
+
+## Sécurité et précautions
+
+- Ne pas raccorder directement du RS-232 aux GPIO de l'ESP32-C3.
+- Ne pas supposer les niveaux électriques à partir de la sérigraphie seule.
+- Ne pas injecter de tension sur TX ou RX.
+- Ne pas émettre de commandes tant que les trames et leurs effets ne sont
+  pas compris.
+- Ne pas perturber la commande d'origine.
+- Vérifier le brochage avant tout branchement.
+- Ne pas effectuer de modifications susceptibles de compromettre la
+  sécurité ou le fonctionnement normal de la VMC.
+
+## État actuel
+
+- [x] Identification du modèle de VMC.
+- [x] Choix de l'ESP32-C3 Super Mini.
+- [x] Identification des connecteurs X6 et X8.
+- [x] Identification d'un composant ESPHome existant à étudier.
+- [x] Choix d'un convertisseur abaisseur DC-DC.
+- [ ] Confirmation du brochage et des niveaux électriques.
+- [ ] Première capture série passive.
+- [ ] Validation du protocole sur le Santos 570 DC.
+- [ ] Première intégration ESPHome fonctionnelle.
+- [ ] Validation des commandes depuis Home Assistant.
+
+---
+
+Projet personnel de rétro-ingénierie et d'intégration domotique.
+La compatibilité, les commandes et les limites de fonctionnement restent
+à confirmer sur le matériel réel.
