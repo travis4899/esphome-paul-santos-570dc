@@ -447,20 +447,27 @@ protected:
           if (exhaust_fan_speed != nullptr) {
             exhaust_fan_speed->publish_state(msg[1]);
           }
-          if (intake_fan_speed_rpm != nullptr) {
-            intake_fan_speed_rpm->publish_state(1875000.0f / get_uint16_(2));
+          // A raw value of zero means the RPM value is unavailable.
+          const uint16_t intake_rpm_raw = get_uint16_(2);
+          const uint16_t exhaust_rpm_raw = get_uint16_(4);
+          if (intake_fan_speed_rpm != nullptr && intake_rpm_raw != 0) {
+            intake_fan_speed_rpm->publish_state(1875000.0f / intake_rpm_raw);
           }
-          if (exhaust_fan_speed_rpm != nullptr) {
-            exhaust_fan_speed_rpm->publish_state(1875000.0f / get_uint16_(4));
+          if (exhaust_fan_speed_rpm != nullptr && exhaust_rpm_raw != 0) {
+            exhaust_fan_speed_rpm->publish_state(1875000.0f / exhaust_rpm_raw);
           }
           break;
         }
       case RES_GET_VALVE_STATUS: {
-        if (bypass_valve != nullptr) {
-          bypass_valve->publish_state(msg[0]);
-        }
-        if (bypass_valve_open != nullptr) {
-          bypass_valve_open->publish_state(msg[0] != 0);
+        // 0xFF means that the bypass position is undefined.
+        // Do not publish it as 255% or interpret it as an open valve.
+        if (msg[0] != 0xFF) {
+          if (bypass_valve != nullptr) {
+            bypass_valve->publish_state(msg[0]);
+          }
+          if (bypass_valve_open != nullptr) {
+            bypass_valve_open->publish_state(msg[0] != 0);
+          }
         }
         if (preheating_valve != nullptr) {
           std::string name_preheating_valve;
