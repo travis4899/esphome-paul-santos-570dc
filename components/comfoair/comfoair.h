@@ -7,7 +7,6 @@
 #include "esphome/components/climate/climate_mode.h"
 #include "esphome/components/climate/climate_traits.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/switch/switch.h"
 #include "esphome/components/uart/uart.h"
 #include "registers.h"
 
@@ -280,9 +279,6 @@ public:
   void set_name(const char* value) {name = value;}
   void set_uart_component(uart::UARTComponent* parent) {set_uart_parent(parent);}
   void set_proxy_uart_component(uart::UARTComponent* proxy) {uart_proxy_.set_uart_parent(proxy);}
-  void set_red_led_component(switch_::Switch* red_led) {red_led_ = red_led;}
-  void set_green_led_component(switch_::Switch* green_led) {green_led_ = green_led;}
-  void set_blue_led_component(switch_::Switch* blue_led) {blue_led_ = blue_led;}
 
 protected:
 
@@ -541,13 +537,10 @@ protected:
           case 0x00:
             fan_mode = climate::CLIMATE_FAN_AUTO;
             mode = climate::CLIMATE_MODE_FAN_ONLY;
-            green_led_->turn_on();
-            red_led_->turn_off();
             break;
           case 0x01:
             fan_mode = climate::CLIMATE_FAN_OFF;
             mode = climate::CLIMATE_MODE_OFF;
-            green_led_->turn_off();
             red_led_->turn_off();
             break;
           case 0x02:
@@ -560,7 +553,6 @@ protected:
             fan_mode = climate::CLIMATE_FAN_MEDIUM;
             mode = climate::CLIMATE_MODE_FAN_ONLY;
             green_led_->turn_on();
-            red_led_->turn_on();
           break;
           case 0x04:
             fan_mode = climate::CLIMATE_FAN_HIGH;
@@ -589,11 +581,6 @@ protected:
         break;
       }
       case RES_GET_FAULTS: {
-        if (msg[8] != 0)
-          blue_led_->turn_on();
-        else
-          blue_led_->turn_off();
-
         if (filter_status != nullptr) {
           uint8_t status = msg[8];
           filter_status->publish_state(status == 0 ? "Ok" : (status == 1 ? "Full" : "Unknown"));
@@ -995,9 +982,6 @@ protected:
   const char* name{0};
 
   uart::UARTDevice uart_proxy_;
-  switch_::Switch* red_led_;
-  switch_::Switch* green_led_;
-  switch_::Switch* blue_led_;
 
 public:
   text_sensor::TextSensor *type{nullptr};
