@@ -5,9 +5,9 @@ import esphome.config_validation as cv
 from esphome.components import binary_sensor, sensor, text_sensor, uart, climate
 from esphome.const import (CONF_ID, CONF_UART_ID, DEVICE_CLASS_CURRENT,
                            DEVICE_CLASS_EMPTY, DEVICE_CLASS_SPEED,
-                           DEVICE_CLASS_TEMPERATURE, DEVICE_CLASS_VOLUME,
+                           DEVICE_CLASS_TEMPERATURE,
                            STATE_CLASS_MEASUREMENT, UNIT_AMPERE, UNIT_CELSIUS,
-                           UNIT_CUBIC_METER, UNIT_HOUR, UNIT_MINUTE,
+                           UNIT_HOUR, UNIT_MINUTE,
                            UNIT_PERCENT, UNIT_REVOLUTIONS_PER_MINUTE, CONF_DISABLED_BY_DEFAULT)
 
 comfoair_ns = cg.esphome_ns.namespace("comfoair")
@@ -198,13 +198,13 @@ comfoair_sensors_schemas = cv.Schema(
         cv.Optional(CONF_PREHEATING_VALVE): text_sensor.text_sensor_schema(),
 
         cv.Optional(CONF_INTAKE_FAN_SPEED): sensor.sensor_schema(
-            device_class=DEVICE_CLASS_SPEED,
+            device_class=DEVICE_CLASS_EMPTY,
             unit_of_measurement=UNIT_PERCENT,
             accuracy_decimals=0,
             state_class=STATE_CLASS_MEASUREMENT,
         ).extend(),
         cv.Optional(CONF_EXHAUST_FAN_SPEED): sensor.sensor_schema(
-            device_class=DEVICE_CLASS_SPEED,
+            device_class=DEVICE_CLASS_EMPTY,
             unit_of_measurement=UNIT_PERCENT,
             accuracy_decimals=0,
             state_class=STATE_CLASS_MEASUREMENT,
@@ -274,30 +274,32 @@ comfoair_sensors_schemas = cv.Schema(
             accuracy_decimals=1,
             state_class=STATE_CLASS_MEASUREMENT,
         ).extend(),
+        # These are the current exhaust/supply airflow levels, in percent.
+        # Keep the legacy config keys for backwards compatibility.
         cv.Optional(CONF_RETURN_AIR_LEVEL): sensor.sensor_schema(
-            device_class=DEVICE_CLASS_VOLUME,
-            unit_of_measurement=UNIT_CUBIC_METER,
-            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_EMPTY,
+            unit_of_measurement=UNIT_PERCENT,
+            accuracy_decimals=0,
             state_class=STATE_CLASS_MEASUREMENT,
         ).extend(),
         cv.Optional(CONF_SUPPLY_AIR_LEVEL): sensor.sensor_schema(
-            device_class=DEVICE_CLASS_VOLUME,
-            unit_of_measurement=UNIT_CUBIC_METER,
-            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_EMPTY,
+            unit_of_measurement=UNIT_PERCENT,
+            accuracy_decimals=0,
             state_class=STATE_CLASS_MEASUREMENT,
         ).extend(),
         cv.Optional(CONF_BYPASS_FACTOR): sensor.sensor_schema(
-            device_class=DEVICE_CLASS_VOLUME,
+            device_class=DEVICE_CLASS_EMPTY,
             accuracy_decimals=0,
             state_class=STATE_CLASS_MEASUREMENT,
         ).extend(),
         cv.Optional(CONF_BYPASS_STEP): sensor.sensor_schema(
-            device_class=DEVICE_CLASS_VOLUME,
+            device_class=DEVICE_CLASS_EMPTY,
             accuracy_decimals=0,
             state_class=STATE_CLASS_MEASUREMENT,
         ).extend(),
         cv.Optional(CONF_BYPASS_CORRECTION): sensor.sensor_schema(
-            device_class=DEVICE_CLASS_VOLUME,
+            device_class=DEVICE_CLASS_EMPTY,
             accuracy_decimals=0,
             state_class=STATE_CLASS_MEASUREMENT,
         ).extend(),
@@ -370,7 +372,7 @@ comfoair_sensors_schemas = cv.Schema(
         ).extend(),
 
         cv.Optional(CONF_BYPASS_VALVE): sensor.sensor_schema(
-            device_class=DEVICE_CLASS_VOLUME,
+            device_class=DEVICE_CLASS_EMPTY,
             unit_of_measurement=UNIT_PERCENT,
             accuracy_decimals=0,
             state_class=STATE_CLASS_MEASUREMENT,
