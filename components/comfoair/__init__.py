@@ -2,7 +2,7 @@
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, sensor, text_sensor, uart, climate, switch
+from esphome.components import binary_sensor, sensor, text_sensor, uart, climate
 from esphome.const import (CONF_ID, CONF_UART_ID, DEVICE_CLASS_CURRENT,
                            DEVICE_CLASS_EMPTY, DEVICE_CLASS_SPEED,
                            DEVICE_CLASS_TEMPERATURE, DEVICE_CLASS_VOLUME,
@@ -21,9 +21,6 @@ AUTO_LOAD = ["sensor", "climate", "binary_sensor", "text_sensor"]
 REQUIRED_KEY_NAME = "name"
 CONF_HUB_ID = "comfoair"
 CONF_PROXY_UART_ID = "proxy_uart"
-CONF_RED_LED_ID = "red_led"
-CONF_GREEN_LED_ID = "green_led"
-CONF_BLUE_LED_ID = "blue_led"
 
 UNIT_WEEK = "weeks"
 
@@ -528,9 +525,6 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.Required(REQUIRED_KEY_NAME): cv.string,
             cv.Required(CONF_PROXY_UART_ID): cv.use_id(uart),
-            cv.Optional(CONF_RED_LED_ID): cv.use_id(switch),
-            cv.Optional(CONF_GREEN_LED_ID): cv.use_id(switch),
-            cv.Optional(CONF_BLUE_LED_ID): cv.use_id(switch),
         }
     )
     .extend(uart.UART_DEVICE_SCHEMA)
@@ -550,15 +544,6 @@ def to_code(config):
     paren = yield cg.get_variable(config[CONF_UART_ID])
     cg.add(var.set_uart_component(paren))
     cg.add(var.set_proxy_uart_component(proxy_uart))
-    if CONF_RED_LED_ID in config:
-        red_led = yield cg.get_variable(config[CONF_RED_LED_ID])
-        cg.add(var.set_red_led_component(red_led))
-    if CONF_GREEN_LED_ID in config:
-        green_led = yield cg.get_variable(config[CONF_GREEN_LED_ID])
-        cg.add(var.set_green_led_component(green_led))
-    if CONF_BLUE_LED_ID in config:
-        blue_led = yield cg.get_variable(config[CONF_BLUE_LED_ID])
-        cg.add(var.set_blue_led_component(blue_led))
     for k, values in helper_comfoair.items():
         for v in values:
             if v not in config:
