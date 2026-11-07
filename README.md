@@ -18,15 +18,15 @@ d'origine.
 ## Objectifs
 
 - Intégrer la VMC à Home Assistant grâce à ESPHome.
-- Lire les informations disponibles sur la liaison série.
-- Exposer les informations pertinentes sous forme de capteurs.
-- Permettre, si le protocole le confirme, de modifier les réglages depuis
-  Home Assistant.
-- Préserver la commande physique d'origine.
-- Documenter le matériel, le protocole et les adaptations nécessaires.
+- Superviser les températures, les ventilateurs, les volets et les états disponibles.
+- Piloter les réglages accessibles par le protocole : température de confort,
+  niveau de ventilation et répartition soufflage / extraction.
+- Étudier la commande du bypass en fonctionnement normal.
+- Conserver la possibilité d'utiliser le clavier d'origine.
 
-Les fonctions réellement disponibles dépendront des commandes prises en
-charge par le contrôleur de la VMC.
+Le dialogue série avec la VMC est désormais fonctionnel. La couche physique,
+la réception des trames et plusieurs réponses du protocole ont été validées
+sur le matériel réel. Les commandes avancées restent à tester individuellement.
 
 ## Matériel
 
@@ -98,34 +98,39 @@ en courant et ses conditions d'utilisation.
 
 Deux connecteurs sont présents sur la carte de la VMC.
 
-| Connecteur | Sérigraphie | Informations disponibles |
+| Connecteur | Sérigraphie | Fonction connue |
 | --- | --- | --- |
-| X6 | `RS232 - KFB` | Bornes `12V`, `TX`, `RX`, `GND` |
-| X8 | `RS232 - PC` | Connecteur DB9 |
+| X6 | `RS232 - KFB` | Interface du clavier d'origine, utilisée pour les essais |
+| X8 | `RS232 - PC` | Connecteur DB9, non utilisé dans le montage actuel |
 
-Le connecteur X8 est une première piste pour communiquer avec la VMC.
-Le connecteur X6 constitue une autre piste, potentiellement liée à la
-commande d'origine.
+**Le montage actuel utilise X6 à la place du clavier** : l'ESP32 est raccordé
+sur cette interface et le clavier est débranché. Le fonctionnement du clavier
+en parallèle n'est donc pas validé.
 
-Le choix définitif sera fait après vérification du brochage, des niveaux
-électriques et des fonctions réellement accessibles sur chaque interface.
+### Câblage validé
 
-### Préserver la commande d'origine
+- ESP32-C3 Super Mini.
+- UART ESPHome : GPIO0 en TX et GPIO1 en RX.
+- Adaptation électrique par MAX3232 alimenté en 3,3 V.
+- Liaison série : 9600 bauds, 8N1.
 
-La priorité est de ne pas perturber le clavier à membrane.
+Les essais de boucle locale ont confirmé le bon fonctionnement de l'UART
+et du MAX3232, y compris côté RS-232. La communication avec la VMC sur X6
+a ensuite été obtenue après correction du raccordement.
 
-Les premiers essais devront privilégier l'observation passive des échanges,
-sans émission de commandes depuis l'ESP32.
+Ne pas transposer ce câblage au connecteur X8 sans vérifier son brochage.
+Ne jamais raccorder directement une liaison RS-232 aux GPIO de l'ESP32.
 
-Un raccordement en parallèle ne sera envisagé qu'après avoir confirmé
-l'absence de risque électrique et les conditions de partage de la liaison.
-Deux équipements qui émettent simultanément sur la même ligne TX peuvent
-entrer en conflit.
+### UART proxy
+
+Le composant comporte également un UART proxy destiné au relais des échanges
+avec le clavier. La configuration actuelle fournit un second UART pour
+satisfaire cette interface logicielle, mais celui-ci n'est pas raccordé
+au clavier dans le montage où l'ESP32 remplace celui-ci.
 
 ## Protocole série
 
-La documentation de protocole ComfoAir identifiée comme piste de travail
-indique les paramètres suivants :
+Paramètres validés sur l'interface X6 :
 
 - Débit : `9600 bauds`
 - Bits de données : `8`
@@ -134,15 +139,64 @@ indique les paramètres suivants :
 
 Soit **9600 bauds, 8N1**.
 
-Ces paramètres constituent une hypothèse de départ pour les essais. Ils ne
-sont pas encore confirmés pour chaque interface du Paul Santos 570 DC.
+Les trames de requête et les réponses de la VMC sont maintenant reçues et
+décodées. Les commandes et réponses sont décrites dans
+`components/comfoair/registers.h`.
 
-Documentation consultée :
+Documentation et références :
 
 - [Description du protocole ComfoAir (PDF)](http://www.see-solutions.de/sonstiges/Protokollbeschreibung_ComfoAir.pdf)
+- [Module FHEM 98_ComfoAir.pm](https://github.com/mhop/fhem-mirror/blob/master/fhem/FHEM/98_ComfoAir.pm)
 
-La compatibilité de ce protocole avec le modèle Santos devra être vérifiée
-par l'analyse des échanges et des réponses réelles de la VMC.
+La compatibilité a été vérifiée par des échanges réels avec la Paul Santos
+570 DC, et non uniquement déduite de la documentation générique ComfoAir.
+
+### Commandes identifiées
+
+- `0x99` — réglage du niveau de ventilation.
+- `0xCF` — réglage des consignes de ventilation (soufflage et extraction).
+- `0xD3` — réglage de la température de confort.
+
+Le composant possède déjà le service ESPHome
+`climate_set_operation_mode(exhaust_fan, supply_fan)`, qui permet de
+configurer indépendamment les deux ventilateurs. Les combinaisons prévues
+sont :
+
+| Mode | Extraction | Soufflage |
+| --- | --- | --- |
+| Double flux | Activée | Activé |
+| Soufflage seul | Désactivée | Activé |
+| Extraction seule | Activée | Désactivé |
+
+Ces commandes sont présentes dans le code, mais les trois modes doivent
+encore être testés sur la VMC réelle.
+
+### Bypass
+
+La lecture de l'état du bypass est disponible. La commande documentée
+`0x09` (`CMD_SET_FLAPS`) appartient au mode test du contrôleur.
+Elle ne doit pas être utilisée comme commande normale de bypass sans
+validation complémentaire. La méthode de pilotage du bypass en fonctionnement
+normal reste donc à identifier.
+
+### Correction du décodage du préchauffage
+
+La réponse `0x0E` (`RES_GET_VALVE_STATUS`) fournit notamment la position
+du bypass et l'état du volet de préchauffage. La réponse `0xE2`
+(`RES_GET_PREHEATING_STATUS`) fournit séparément l'état du préchauffage.
+
+Le composant publiait auparavant ces deux informations dans le même capteur
+`preheating_state`, ce qui provoquait une alternance artificielle entre
+ON et OFF à chaque cycle de lecture.
+
+Le décodage a été corrigé :
+- `preheating_valve` est alimenté par l'état du volet reçu dans `0x0E`
+  et interprète les valeurs 0 (Closed), 1 (Open) et 2 (Unknown).
+- `preheating_state` est alimenté uniquement par la réponse `0xE2`.
+- L'état de protection antigel reste décodé séparément.
+
+Sur la configuration actuellement testée, le préchauffage est éteint et
+la réponse indique bien `preheating_state = OFF`.
 
 ## Sources logicielles et crédits
 
@@ -232,42 +286,59 @@ Le code du composant sera chargé de :
 La configuration YAML définira les broches, les paramètres de liaison,
 les capteurs et les commandes disponibles.
 
-## Fonctionnalités envisagées
+## Fonctionnalités
 
-Les fonctionnalités suivantes sont des objectifs, pas des capacités déjà
-validées sur le Paul Santos 570 DC.
+### Supervision déjà opérationnelle
 
-### Supervision
+Les informations suivantes sont lues depuis la VMC et exposées dans ESPHome
+(selon les capteurs activés dans la configuration) :
 
-Selon les informations accessibles dans le protocole :
-- lecture de l'état de fonctionnement ;
-- lecture du mode ou du niveau de ventilation ;
-- lecture éventuelle des vitesses de ventilateurs ;
-- lecture des alarmes ou informations de maintenance disponibles.
+- Températures extérieure, soufflage, reprise et extraction.
+- Pourcentages et vitesses de rotation des ventilateurs de soufflage et
+  d'extraction.
+- Niveau de ventilation.
+- Position du bypass et informations de commande du bypass.
+- État du volet de préchauffage et état du préchauffage.
+- État de la protection antigel.
+- État du filtre.
+- Informations complémentaires : heures de fonctionnement, paramètres
+  du bypass et caractéristiques de la machine.
 
-### Commande
+La réception des trames et le décodage de plusieurs réponses ont été validés
+sur la Santos 570 DC.
 
-Si les commandes correspondantes sont identifiées et validées :
-- modification du niveau de ventilation ;
-- changement de mode ;
-- accès aux autres réglages explicitement pris en charge par la VMC.
+### Commandes disponibles dans le composant
 
-Aucune commande ne sera publiée dans Home Assistant avant d'avoir été
-identifiée et testée de manière fiable.
+- Réglage de la température de confort.
+- Réglage du niveau de ventilation.
+- Réglage des consignes de soufflage et d'extraction.
+- Sélection indépendante des ventilateurs de soufflage et d'extraction
+  via le service `climate_set_operation_mode`.
+
+La présence d'une commande dans le composant ne signifie pas encore que
+tous ses modes ont été validés sur la machine. Les essais de pilotage restent
+à effectuer progressivement.
+
+### Fonctions encore à étudier
+
+- Commande du bypass en fonctionnement normal.
+- Validation sur la machine des modes soufflage seul, extraction seule
+  et double flux.
+- Fonctionnement du clavier d'origine en parallèle, ou mise en place
+  d'un relais série si cela est techniquement possible.
 
 ## Plan de développement
 
-1. Étudier le brochage des connecteurs X6 et X8.
-2. Confirmer les niveaux électriques et le rôle de chaque interface.
-3. Réaliser un raccordement série adapté, avec MAX3232 si l'interface est
-   réellement en RS-232.
-4. Vérifier l'alimentation de l'ESP32-C3 et du convertisseur DC-DC.
-5. Observer les échanges série sans perturber la commande d'origine.
-6. Identifier les trames et les réponses du contrôleur.
-7. Adapter le composant ESPHome existant au modèle Santos.
-8. Exposer progressivement les capteurs dans Home Assistant.
-9. Tester les commandes, si le protocole le permet.
-10. Documenter les résultats, les limitations et le câblage validé.
+1. [x] Identifier le modèle et les interfaces de la VMC.
+2. [x] Valider l'UART de l'ESP32-C3 et le MAX3232 par boucle locale.
+3. [x] Établir la communication série avec la VMC sur X6.
+4. [x] Valider la réception et le décodage de plusieurs trames.
+5. [x] Exposer les premières informations de supervision dans ESPHome.
+6. [x] Corriger le décodage de l'état du préchauffage.
+7. [ ] Tester les trois modes de ventilation depuis Home Assistant.
+8. [ ] Identifier une commande normale et sûre du bypass.
+9. [ ] Étudier la possibilité de conserver le clavier d'origine.
+10. [ ] Compléter la documentation du câblage et des entités Home Assistant.
 
 ## Sécurité et précautions
 
@@ -283,16 +354,22 @@ identifiée et testée de manière fiable.
 
 ## État actuel
 
-- [x] Identification du modèle de VMC.
-- [x] Choix de l'ESP32-C3 Super Mini.
-- [x] Identification des connecteurs X6 et X8.
-- [x] Identification d'un composant ESPHome existant à étudier.
-- [x] Choix d'un convertisseur abaisseur DC-DC.
-- [ ] Confirmation du brochage et des niveaux électriques.
-- [ ] Première capture série passive.
-- [ ] Validation du protocole sur le Santos 570 DC.
-- [ ] Première intégration ESPHome fonctionnelle.
-- [ ] Validation des commandes depuis Home Assistant.
+<badge>Communication série opérationnelle</badge>
+
+- [x] ESP32-C3 Super Mini et MAX3232.
+- [x] UART GPIO0 (TX) / GPIO1 (RX), 9600 bauds, 8N1.
+- [x] Boucle locale UART et boucle côté RS-232 validées.
+- [x] Communication avec la VMC sur X6.
+- [x] Réception et décodage des réponses du contrôleur.
+- [x] Premiers capteurs de supervision opérationnels.
+- [x] Correction du conflit de publication de `preheating_state`.
+- [x] Service logiciel de sélection soufflage / extraction présent.
+- [ ] Validation pratique des trois modes de ventilation.
+- [ ] Commande du bypass en fonctionnement normal.
+- [ ] Clavier d'origine utilisable en parallèle.
+
+Le montage actuel remplace le clavier sur X6. Le fonctionnement simultané
+du clavier et de l'ESP32 n'est pas encore établi.
 
 ---
 
