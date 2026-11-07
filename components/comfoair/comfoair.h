@@ -462,8 +462,20 @@ protected:
         if (bypass_valve_open != nullptr) {
           bypass_valve_open->publish_state(msg[0] != 0);
         }
-        if (preheating_state != nullptr) {
-          preheating_state->publish_state(msg[1] != 0);
+        if (preheating_valve != nullptr) {
+          std::string name_preheating_valve;
+          switch (msg[1]) {
+            case 0:
+              name_preheating_valve = "Closed";
+              break;
+            case 1:
+              name_preheating_valve = "Open";
+              break;
+            default:
+              name_preheating_valve = "Unknown";
+              break;
+          }
+          preheating_valve->publish_state(name_preheating_valve);
         }
         if (motor_current_bypass != nullptr) {
           motor_current_bypass->publish_state(msg[2]);
@@ -884,7 +896,7 @@ protected:
   void get_valve_status_() {
     if (bypass_valve != nullptr ||
         bypass_valve_open != nullptr ||
-        preheating_state != nullptr) {
+        preheating_valve != nullptr) {
       ESP_LOGD(TAG, "getting valve status");
       write_command_(CMD_GET_VALVE_STATUS, nullptr, 0);
     }
