@@ -541,24 +541,18 @@ protected:
           case 0x01:
             fan_mode = climate::CLIMATE_FAN_OFF;
             mode = climate::CLIMATE_MODE_OFF;
-            red_led_->turn_off();
             break;
           case 0x02:
             fan_mode = climate::CLIMATE_FAN_LOW;
             mode = climate::CLIMATE_MODE_FAN_ONLY;
-            green_led_->turn_on();
-            red_led_->turn_off();
             break;
           case 0x03:
             fan_mode = climate::CLIMATE_FAN_MEDIUM;
             mode = climate::CLIMATE_MODE_FAN_ONLY;
-            green_led_->turn_on();
           break;
           case 0x04:
             fan_mode = climate::CLIMATE_FAN_HIGH;
             mode = climate::CLIMATE_MODE_FAN_ONLY;
-            green_led_->turn_off();
-            red_led_->turn_on();
             break;
         }
 
