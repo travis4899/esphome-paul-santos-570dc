@@ -49,9 +49,9 @@ public:
     write_command_(CMD_SET_VENTILATION_LEVEL, command_data, sizeof(command_data));
   }
 
-  void control_set_curmode_speeds(int exhaust, int supply) {
+  void control_set_curmode_speeds(int32_t exhaust, int32_t supply) {
     // Default values: Abw ab 16 - Abw zu 0 - Low ab 47 - Low zu 35 - Middle ab 67 - Middle zu 50 - High ab 87 - High zu 70
-    ESP_LOGI(TAG, "Setting speeds for level %i to: %i,%i", ventilation_level->state, exhaust, supply);
+    ESP_LOGI(TAG, "Setting speeds for level %.0f to: %ld,%ld", ventilation_level->state, (long) exhaust, (long) supply);
     uint8_t command_data[CMD_SET_VENTILATION_LEVEL_LENGTH] = {
         (ventilation_level->state==0x01) ? ventilation_levels_[0] : (uint8_t)exhaust,
         (ventilation_level->state==0x02) ? ventilation_levels_[2] : (uint8_t)exhaust,
@@ -66,7 +66,7 @@ public:
     write_command_(CMD_SET_VENTILATION_LEVEL, command_data, sizeof(command_data));
   }
 
-  void control_set_speeds(bool exhaust, bool supply, int off, int low, int mid, int high) {
+  void control_set_speeds(bool exhaust, bool supply, int32_t off, int32_t low, int32_t mid, int32_t high) {
     // Default values: Abw ab 16 - Abw zu 0 - Low ab 47 - Low zu 35 - Middle ab 67 - Middle zu 50 - High ab 87 - High zu 70
     uint8_t command_data[CMD_SET_VENTILATION_LEVEL_LENGTH] = {
         !exhaust ? ventilation_levels_[0] : (uint8_t)off,
@@ -301,11 +301,11 @@ protected:
   void set_comfort_temperature_(float temperature) {
     if (temperature < COMFOAIR_MIN_SUPPORTED_TEMP || 
         temperature > COMFOAIR_MAX_SUPPORTED_TEMP) {
-      ESP_LOGI(TAG, "Ignoring invalid temperature request: %i", temperature);
+      ESP_LOGI(TAG, "Ignoring invalid temperature request: %.1f", temperature);
       return;
     }
 
-    ESP_LOGI(TAG, "Setting temperature to: %i", temperature);
+    ESP_LOGI(TAG, "Setting temperature to: %.1f", temperature);
     uint8_t command[CMD_SET_COMFORT_TEMPERATURE_LENGTH] = {(uint8_t) ((temperature + 20.0f) * 2.0f)};
     write_command_(CMD_SET_COMFORT_TEMPERATURE, command, sizeof(command));
   }
@@ -394,7 +394,7 @@ protected:
         encountered_seven_ = true;
       } else {
         if (encountered_seven_)
-          ESP_LOGW(TAG, "No 0x07 after another one encoutered %02X instead at index.", byte, index);
+          ESP_LOGW(TAG, "No 0x07 after another one encountered %02X instead at index %u.", (unsigned) byte, (unsigned) index);
         encountered_seven_ = false;
       }
       return true;
