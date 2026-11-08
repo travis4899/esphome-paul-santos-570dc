@@ -636,14 +636,14 @@ protected:
         }
         
         // Record current speeds for resetting them if needed.
-        if (msg[0]) ventilation_levels_[0] = msg[0];
-        if (msg[3]) ventilation_levels_[1] = msg[3];
-        if (msg[1]) ventilation_levels_[2] = msg[1];
-        if (msg[4]) ventilation_levels_[3] = msg[4];
-        if (msg[2]) ventilation_levels_[4] = msg[2];
-        if (msg[5]) ventilation_levels_[5] = msg[5];
-        if (msg[10]) ventilation_levels_[6] = msg[10];
-        if (msg[11]) ventilation_levels_[7] = msg[11];        
+        ventilation_levels_[0] = msg[0];
+        ventilation_levels_[1] = msg[3];
+        ventilation_levels_[2] = msg[1];
+        ventilation_levels_[3] = msg[4];
+        ventilation_levels_[4] = msg[2];
+        ventilation_levels_[5] = msg[5];
+        ventilation_levels_[6] = msg[10];
+        ventilation_levels_[7] = msg[11];
         break;
       }
       case RES_GET_FAULTS: {
@@ -1040,7 +1040,7 @@ protected:
   int8_t update_counter_{-4};
   const int8_t num_update_counter_elements_{9};
 
-  uint8_t ventilation_levels_[8];
+  uint8_t ventilation_levels_[8]{};
 
   uint8_t bootloader_version_[13]{0};
   uint8_t firmware_version_[13]{0};
