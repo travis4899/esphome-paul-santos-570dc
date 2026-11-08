@@ -36,6 +36,7 @@ public:
       register_service(&ComfoAirComponent::control_set_operation_mode, "climate_set_operation_mode", {"exhaust_fan", "supply_fan"});
       register_service(&ComfoAirComponent::control_set_speeds, "climate_set_speeds", {"exhaust_fan", "supply_fan", "off", "low", "mid", "high"});
       register_service(&ComfoAirComponent::control_set_curmode_speeds, "climate_set_current_mode_speeds", {"exhaust", "supply"});
+      register_service(&ComfoAirComponent::set_bypass, "set_bypass", {"open"});
   }
   
   // Direct flap control. Value 3 stops the other actuator so its
