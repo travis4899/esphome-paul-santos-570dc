@@ -38,6 +38,26 @@ public:
       register_service(&ComfoAirComponent::control_set_curmode_speeds, "climate_set_current_mode_speeds", {"exhaust", "supply"});
   }
   
+  // Direct flap control. Value 3 stops the other actuator so its
+  // current position is maintained while the requested flap moves.
+  void set_bypass(bool open) {
+    uint8_t command_data[2] = {
+      open ? (uint8_t)0x01 : (uint8_t)0x00,
+      (uint8_t)0x03
+    };
+    ESP_LOGI(TAG, "Setting bypass flap: %s", open ? "open" : "closed");
+    write_command_(0x09, command_data, sizeof(command_data));
+  }
+
+  void set_preheating(bool enabled) {
+    uint8_t command_data[2] = {
+      (uint8_t)0x03,
+      enabled ? (uint8_t)0x01 : (uint8_t)0x00
+    };
+    ESP_LOGI(TAG, "Setting preheating flap: %s", enabled ? "open" : "closed");
+    write_command_(0x09, command_data, sizeof(command_data));
+  }
+
   void control_set_operation_mode(bool exhaust, bool supply) {
     ESP_LOGI(TAG, "Setting operation mode target exhaust: %i, supply: %i", exhaust, supply);
     uint8_t command_data[CMD_SET_VENTILATION_LEVEL_LENGTH] = {
