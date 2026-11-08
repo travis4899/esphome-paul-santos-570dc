@@ -28,6 +28,11 @@ public:
   UARTDevice() { }
 
   void setup() override {
+      this->set_supported_custom_presets({
+        "Double flux",
+        "Extraction seule",
+        "Soufflage seul",
+      });
       register_service(&ComfoAirComponent::control_set_operation_mode, "climate_set_operation_mode", {"exhaust_fan", "supply_fan"});
       register_service(&ComfoAirComponent::control_set_speeds, "climate_set_speeds", {"exhaust_fan", "supply_fan", "off", "low", "mid", "high"});
       register_service(&ComfoAirComponent::control_set_curmode_speeds, "climate_set_current_mode_speeds", {"exhaust", "supply"});
@@ -99,27 +104,23 @@ public:
       climate::CLIMATE_FAN_HIGH,
       climate::CLIMATE_FAN_OFF,
     });
-    traits.set_supported_presets({
-      "Double flux",
-      "Extraction seule",
-      "Soufflage seul",
-    });
     return traits;
   }
 
   /// Override control to change settings of the climate device.
   void control(const climate::ClimateCall &call) override {
-    if (call.get_preset().has_value()) {
-      preset = *call.get_preset();
+    if (call.has_custom_preset()) {
+      const auto selected_preset = call.get_custom_preset();
+      this->set_custom_preset_(selected_preset);
 
-      if (preset == "Double flux") {
+      if (strcmp(selected_preset.c_str(), "Double flux") == 0) {
         control_set_operation_mode(true, true);
-      } else if (preset == "Extraction seule") {
+      } else if (strcmp(selected_preset.c_str(), "Extraction seule") == 0) {
         control_set_operation_mode(true, false);
-      } else if (preset == "Soufflage seul") {
+      } else if (strcmp(selected_preset.c_str(), "Soufflage seul") == 0) {
         control_set_operation_mode(false, true);
       } else {
-        ESP_LOGW(TAG, "Ignoring unsupported operation preset: %s", preset.c_str());
+        ESP_LOGW(TAG, "Ignoring unsupported operation preset: %s", selected_preset.c_str());
       }
     }
 
@@ -570,13 +571,13 @@ protected:
         const bool exhaust_active = msg[6] > 0;
         const bool supply_active = msg[7] > 0;
         if (exhaust_active && supply_active) {
-          preset = "Double flux";
+          this->set_custom_preset_("Double flux");
         } else if (exhaust_active) {
-          preset = "Extraction seule";
+          this->set_custom_preset_("Extraction seule");
         } else if (supply_active) {
-          preset = "Soufflage seul";
+          this->set_custom_preset_("Soufflage seul");
         } else {
-          preset.clear();
+          this->clear_custom_preset_();
         }
 
         if (ventilation_level != nullptr) {
