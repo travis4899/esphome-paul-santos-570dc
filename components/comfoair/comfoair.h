@@ -578,7 +578,7 @@ protected:
       case RES_GET_VENTILATION_LEVEL: {
 
         ESP_LOGD(TAG, "Level %02x", msg[8]);
-        ESP_LOGW(TAG, "Off ab %i - Off zu %i - Low ab %i - Low zu %i - Middle ab %i - Middle zu %i - High ab %i - High zu %i", msg[0], msg[3], msg[1], msg[4], msg[2], msg[5], msg[10], msg[11]);
+        ESP_LOGD(TAG, "Fan levels - Exhaust: Off %i, Low %i, Middle %i, High %i - Supply: Off %i, Low %i, Middle %i, High %i", msg[0], msg[1], msg[2], msg[10], msg[3], msg[4], msg[5], msg[11]);
 
         if (return_air_level != nullptr) {
           return_air_level->publish_state(msg[6]);
