@@ -99,11 +99,30 @@ public:
       climate::CLIMATE_FAN_HIGH,
       climate::CLIMATE_FAN_OFF,
     });
+    traits.set_supported_presets({
+      "Double flux",
+      "Extraction seule",
+      "Soufflage seul",
+    });
     return traits;
   }
 
   /// Override control to change settings of the climate device.
   void control(const climate::ClimateCall &call) override {
+    if (call.get_preset().has_value()) {
+      preset = *call.get_preset();
+
+      if (preset == "Double flux") {
+        control_set_operation_mode(true, true);
+      } else if (preset == "Extraction seule") {
+        control_set_operation_mode(true, false);
+      } else if (preset == "Soufflage seul") {
+        control_set_operation_mode(false, true);
+      } else {
+        ESP_LOGW(TAG, "Ignoring unsupported operation preset: %s", preset.c_str());
+      }
+    }
+
     if (call.get_fan_mode().has_value()) {
       int level;
 
@@ -545,6 +564,19 @@ protected:
         }
         if (supply_air_level != nullptr) {
           supply_air_level->publish_state(msg[7]);
+        }
+
+        // Infer the selected airflow configuration from the current fan levels.
+        const bool exhaust_active = msg[6] > 0;
+        const bool supply_active = msg[7] > 0;
+        if (exhaust_active && supply_active) {
+          preset = "Double flux";
+        } else if (exhaust_active) {
+          preset = "Extraction seule";
+        } else if (supply_active) {
+          preset = "Soufflage seul";
+        } else {
+          preset.clear();
         }
 
         if (ventilation_level != nullptr) {
