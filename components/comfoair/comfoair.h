@@ -2,6 +2,7 @@
 
 #include "esphome.h"
 #include "esphome/core/component.h"
+#include "esphome/core/preferences.h"
 #include "esphome/components/api/custom_api_device.h"
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/climate/climate_mode.h"
@@ -28,6 +29,20 @@ public:
   UARTDevice() { }
 
   void setup() override {
+      ventilation_levels_pref_ = global_preferences->make_preference<uint64_t>(fnv1_hash("comfoair_ventilation_levels"));
+      uint64_t stored_levels = 0;
+      if (ventilation_levels_pref_.load(&stored_levels)) {
+        for (uint8_t i = 0; i < 8; i++) {
+          ventilation_levels_[i] = (stored_levels >> (i * 8)) & 0xFF;
+        }
+        ESP_LOGI(TAG, "Restored ventilation fan levels from flash");
+      } else {
+        // Known factory/configured levels, used until the controller reports them.
+        const uint8_t defaults[8] = {15, 0, 40, 35, 50, 50, 70, 70};
+        memcpy(ventilation_levels_, defaults, sizeof(defaults));
+        this->save_ventilation_levels_();
+        ESP_LOGI(TAG, "Initialized ventilation fan levels with defaults");
+      }
       this->set_supported_custom_presets({
         "Double flux",
         "Extraction seule",
@@ -326,6 +341,14 @@ protected:
   void reset_errors_(bool filters, bool errors) {
     uint8_t reset_cmd[CMD_RESET_AND_SELF_TEST_LENGTH] = {errors ? (uint8_t)1 : (uint8_t)0, 0, 0, filters ? (uint8_t)1 : (uint8_t)0};
     write_command_(CMD_RESET_AND_SELF_TEST, reset_cmd, sizeof(reset_cmd));
+  }
+
+  void save_ventilation_levels_() {
+    uint64_t stored_levels = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+      stored_levels |= (uint64_t) ventilation_levels_[i] << (i * 8);
+    }
+    ventilation_levels_pref_.save(&stored_levels);
   }
 
   void set_level_(int level) {
@@ -636,15 +659,20 @@ protected:
           supply_fan_active->publish_state(msg[9] == 1);
         }
         
-        // Record current speeds for resetting them if needed.
-        if (msg[0]) ventilation_levels_[0] = msg[0];
-        if (msg[3]) ventilation_levels_[1] = msg[3];
-        if (msg[1]) ventilation_levels_[2] = msg[1];
-        if (msg[4]) ventilation_levels_[3] = msg[4];
-        if (msg[2]) ventilation_levels_[4] = msg[2];
-        if (msg[5]) ventilation_levels_[5] = msg[5];
-        if (msg[10]) ventilation_levels_[6] = msg[10];
-        if (msg[11]) ventilation_levels_[7] = msg[11];
+        // Keep the last non-zero fan levels. A stopped fan is reported as zero,
+        // which must not erase the level needed when that fan is re-enabled.
+        bool levels_changed = false;
+        if (msg[0] && ventilation_levels_[0] != msg[0]) { ventilation_levels_[0] = msg[0]; levels_changed = true; }
+        if (msg[3] && ventilation_levels_[1] != msg[3]) { ventilation_levels_[1] = msg[3]; levels_changed = true; }
+        if (msg[1] && ventilation_levels_[2] != msg[1]) { ventilation_levels_[2] = msg[1]; levels_changed = true; }
+        if (msg[4] && ventilation_levels_[3] != msg[4]) { ventilation_levels_[3] = msg[4]; levels_changed = true; }
+        if (msg[2] && ventilation_levels_[4] != msg[2]) { ventilation_levels_[4] = msg[2]; levels_changed = true; }
+        if (msg[5] && ventilation_levels_[5] != msg[5]) { ventilation_levels_[5] = msg[5]; levels_changed = true; }
+        if (msg[10] && ventilation_levels_[6] != msg[10]) { ventilation_levels_[6] = msg[10]; levels_changed = true; }
+        if (msg[11] && ventilation_levels_[7] != msg[11]) { ventilation_levels_[7] = msg[11]; levels_changed = true; }
+        if (levels_changed) {
+          this->save_ventilation_levels_();
+        }
         break;
       }
       case RES_GET_FAULTS: {
@@ -1042,6 +1070,7 @@ protected:
   const int8_t num_update_counter_elements_{9};
 
   uint8_t ventilation_levels_[8]{};
+  ESPPreferenceObject ventilation_levels_pref_;
 
   uint8_t bootloader_version_[13]{0};
   uint8_t firmware_version_[13]{0};
