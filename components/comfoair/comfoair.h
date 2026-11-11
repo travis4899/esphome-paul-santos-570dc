@@ -76,6 +76,15 @@ public:
 
   void control_set_operation_mode(bool exhaust, bool supply) {
     ESP_LOGI(TAG, "Setting operation mode target exhaust: %i, supply: %i", exhaust, supply);
+    preset_level_pending_ = false;
+    if (ventilation_level != nullptr && ventilation_level->has_state()) {
+      const float current_level = ventilation_level->state;
+      if (current_level >= -1.0f && current_level <= 3.0f) {
+        preset_level_after_mode_ = (uint8_t) (current_level + 1.0f);
+        preset_level_pending_ = true;
+      }
+    }
+
     uint8_t command_data[CMD_SET_VENTILATION_LEVEL_LENGTH] = {
         exhaust ? ventilation_levels_[0] : (uint8_t)0,
         exhaust ? ventilation_levels_[2] : (uint8_t)0,
@@ -301,7 +310,13 @@ public:
       if (!check.has_value()) {
         // finished
         ESP_LOGV(TAG, "Response 0x%02X from confosense with %i bytes.", data_[COMMAND_IDX_MSG_ID], data_index_+1);
-        if (data_[COMMAND_ID_ACK] != COMMAND_ACK) {
+        if (data_[COMMAND_ID_ACK] == COMMAND_ACK) {
+          if (preset_level_pending_) {
+            preset_level_pending_ = false;
+            uint8_t command[CMD_SET_LEVEL_LENGTH] = {preset_level_after_mode_};
+            write_command_(CMD_SET_LEVEL, command, sizeof(command));
+          }
+        } else {
           parse_data_();
         }
         // Proxy result to the display.
@@ -1065,6 +1080,8 @@ protected:
   uint8_t proxy_data_index_{0};
   bool encountered_seven_{false};
   bool proxy_data_pending_{false};
+  bool preset_level_pending_{false};
+  uint8_t preset_level_after_mode_{0};
 
   int8_t update_counter_{-4};
   const int8_t num_update_counter_elements_{9};
