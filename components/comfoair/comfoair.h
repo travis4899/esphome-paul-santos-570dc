@@ -85,18 +85,16 @@ public:
       }
     }
 
-    uint8_t command_data[CMD_SET_VENTILATION_LEVEL_LENGTH] = {
-        exhaust ? ventilation_levels_[0] : (uint8_t)0,
-        exhaust ? ventilation_levels_[2] : (uint8_t)0,
-        exhaust ? ventilation_levels_[4] : (uint8_t)0,
-        supply ? ventilation_levels_[1] : (uint8_t)0,
-        supply ? ventilation_levels_[3] : (uint8_t)0,
-        supply ? ventilation_levels_[5] : (uint8_t)0,
-        exhaust ? ventilation_levels_[6] : (uint8_t)0,
-        supply ? ventilation_levels_[7] : (uint8_t)0,
-        (uint8_t)0x00
-    };
-    write_command_(CMD_SET_VENTILATION_LEVEL, command_data, sizeof(command_data));
+    preset_mode_command_data_[0] = exhaust ? ventilation_levels_[0] : (uint8_t)0;
+    preset_mode_command_data_[1] = exhaust ? ventilation_levels_[2] : (uint8_t)0;
+    preset_mode_command_data_[2] = exhaust ? ventilation_levels_[4] : (uint8_t)0;
+    preset_mode_command_data_[3] = supply ? ventilation_levels_[1] : (uint8_t)0;
+    preset_mode_command_data_[4] = supply ? ventilation_levels_[3] : (uint8_t)0;
+    preset_mode_command_data_[5] = supply ? ventilation_levels_[5] : (uint8_t)0;
+    preset_mode_command_data_[6] = exhaust ? ventilation_levels_[6] : (uint8_t)0;
+    preset_mode_command_data_[7] = supply ? ventilation_levels_[7] : (uint8_t)0;
+    preset_mode_command_data_[8] = 0x00;
+    preset_mode_command_pending_ = true;
   }
 
   void control_set_curmode_speeds(int32_t exhaust, int32_t supply) {
@@ -306,6 +304,7 @@ public:
 
     while (available() != 0) {
       read_byte(&data_[data_index_]);
+      last_uart_rx_ms_ = millis();
       auto check = check_byte_(data_, data_index_);
       if (!check.has_value()) {
         // finished
@@ -313,6 +312,7 @@ public:
         if (data_[COMMAND_ID_ACK] == COMMAND_ACK) {
           if (preset_level_pending_) {
             preset_level_pending_ = false;
+            ESP_LOGD(TAG, "Preset command acknowledged; restoring level %u", preset_level_after_mode_);
             uint8_t command[CMD_SET_LEVEL_LENGTH] = {preset_level_after_mode_};
             write_command_(CMD_SET_LEVEL, command, sizeof(command));
           }
@@ -337,6 +337,16 @@ public:
         // next byte
         data_index_++;
       }
+    }
+
+    // Keep preset writes out of the middle of a controller response. An ACK
+    // inserted into a response cannot be parsed as a standalone frame.
+    if (preset_mode_command_pending_ &&
+        (uint32_t) (millis() - last_uart_rx_ms_) >= 100) {
+      preset_mode_command_pending_ = false;
+      ESP_LOGD(TAG, "Sending preset command after UART idle");
+      write_command_(CMD_SET_VENTILATION_LEVEL, preset_mode_command_data_,
+                     sizeof(preset_mode_command_data_));
     }
   }
 
@@ -1080,6 +1090,9 @@ protected:
   uint8_t proxy_data_index_{0};
   bool encountered_seven_{false};
   bool proxy_data_pending_{false};
+  bool preset_mode_command_pending_{false};
+  uint8_t preset_mode_command_data_[CMD_SET_VENTILATION_LEVEL_LENGTH]{};
+  uint32_t last_uart_rx_ms_{0};
   bool preset_level_pending_{false};
   uint8_t preset_level_after_mode_{0};
 
