@@ -310,7 +310,8 @@ public:
         // finished
         ESP_LOGV(TAG, "Response 0x%02X from confosense with %i bytes.", data_[COMMAND_IDX_MSG_ID], data_index_+1);
         if (data_[COMMAND_ID_ACK] == COMMAND_ACK) {
-          if (preset_level_pending_) {
+          if (preset_waiting_ack_) {
+            preset_waiting_ack_ = false;
             preset_level_pending_ = false;
             ESP_LOGD(TAG, "Preset command acknowledged; restoring level %u", preset_level_after_mode_);
             uint8_t command[CMD_SET_LEVEL_LENGTH] = {preset_level_after_mode_};
@@ -344,6 +345,7 @@ public:
     if (preset_mode_command_pending_ &&
         (uint32_t) (millis() - last_uart_rx_ms_) >= 100) {
       preset_mode_command_pending_ = false;
+      preset_waiting_ack_ = preset_level_pending_;
       ESP_LOGD(TAG, "Sending preset command after UART idle");
       write_command_(CMD_SET_VENTILATION_LEVEL, preset_mode_command_data_,
                      sizeof(preset_mode_command_data_));
@@ -1091,6 +1093,7 @@ protected:
   bool encountered_seven_{false};
   bool proxy_data_pending_{false};
   bool preset_mode_command_pending_{false};
+  bool preset_waiting_ack_{false};
   uint8_t preset_mode_command_data_[CMD_SET_VENTILATION_LEVEL_LENGTH]{};
   uint32_t last_uart_rx_ms_{0};
   bool preset_level_pending_{false};
