@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdio>
+
 #include "esphome.h"
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
@@ -313,6 +315,7 @@ public:
       if (!check.has_value()) {
         ESP_LOGV(TAG, "Proxying command 0x%02X from confosense with %i bytes.",
                  proxy_data_[COMMAND_IDX_MSG_ID], proxy_data_index_ + 1);
+        log_uart2_frame_("RX keyboard", proxy_data_, proxy_data_index_ + 1);
         if (data_index_ == 0 && !controller_command_in_flight_) {
           write_array(proxy_data_, proxy_data_index_ + 1);
           flush();
@@ -369,6 +372,7 @@ public:
         }
 
         if (forward_response) {
+          log_uart2_frame_("TX display", data_, data_index_ + 1);
           uart_proxy_.write_array(data_, data_index_ + 1);
           uart_proxy_.flush();
         }
@@ -461,6 +465,20 @@ protected:
     ESP_LOGI(TAG, "Setting temperature to: %.1f", temperature);
     uint8_t command[CMD_SET_COMFORT_TEMPERATURE_LENGTH] = {(uint8_t) ((temperature + 20.0f) * 2.0f)};
     write_command_(CMD_SET_COMFORT_TEMPERATURE, command, sizeof(command));
+  }
+
+  void log_uart2_frame_(const char *direction, const uint8_t *frame, uint8_t length) const {
+    char frame_hex[91];
+    size_t offset = 0;
+    frame_hex[0] = '\0';
+    for (uint8_t i = 0; i < length; i++) {
+      const int written = snprintf(frame_hex + offset, sizeof(frame_hex) - offset,
+                                   "%02X%s", frame[i], i + 1 < length ? " " : "");
+      if (written < 0 || (size_t) written >= sizeof(frame_hex) - offset)
+        break;
+      offset += (size_t) written;
+    }
+    ESP_LOGD(TAG, "UART2 %s (%u bytes): %s", direction, (unsigned) length, frame_hex);
   }
 
   void write_command_(const uint8_t command, const uint8_t *command_data, uint8_t command_data_length) {
