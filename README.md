@@ -103,15 +103,18 @@ Deux connecteurs sont présents sur la carte de la VMC.
 | X6 | `RS232 - KFB` | Interface du clavier d'origine, utilisée pour les essais |
 | X8 | `RS232 - PC` | Connecteur DB9, non utilisé dans le montage actuel |
 
-**Le montage actuel utilise X6 à la place du clavier** : l'ESP32 est raccordé
-sur cette interface et le clavier est débranché. Le fonctionnement du clavier
-en parallèle n'est donc pas validé.
+Le montage d'essai raccorde l'ESP32 à la VMC sur X6 avec l'UART1 et le clavier
+d'origine à l'ESP32 avec l'UART2, via des interfaces RS-232 adaptées (MAX3232).
+Le composant relaie les échanges du clavier vers la VMC et les réponses de la VMC
+vers le clavier. Le fonctionnement simultané est en cours de validation sur
+l'installation réelle.
 
 ### Câblage validé
 
 - ESP32-C3 Super Mini.
-- UART ESPHome : GPIO0 en TX et GPIO1 en RX.
-- Adaptation électrique par MAX3232 alimenté en 3,3 V.
+- UART1 vers la VMC : GPIO0 en TX et GPIO1 en RX.
+- UART2 vers le clavier : GPIO5 en TX et GPIO4 en RX.
+- Adaptation électrique RS-232 par MAX3232 alimenté en 3,3 V pour chaque liaison.
 - Liaison série : 9600 bauds, 8N1.
 
 Les essais de boucle locale ont confirmé le bon fonctionnement de l'UART
@@ -123,10 +126,36 @@ Ne jamais raccorder directement une liaison RS-232 aux GPIO de l'ESP32.
 
 ### UART proxy
 
-Le composant comporte également un UART proxy destiné au relais des échanges
-avec le clavier. La configuration actuelle fournit un second UART pour
-satisfaire cette interface logicielle, mais celui-ci n'est pas raccordé
-au clavier dans le montage où l'ESP32 remplace celui-ci.
+L'UART1 relie l'ESP32 à la VMC sur X6 ; l'UART2 relie l'ESP32 au clavier.
+Le composant relaie les trames complètes du clavier vers la VMC, puis renvoie
+les réponses de la VMC au clavier. Le trafic est sérialisé pour éviter de
+mélanger les commandes du contrôleur et celles du clavier.
+
+Lors d'un changement de preset depuis Home Assistant, le composant envoie
+la commande `0xCF` (répartition soufflage/extraction) après une période de
+silence sur l'UART VMC. Il attend son ACK puis réapplique la commande `0x99`
+(niveau actif) seulement si le niveau courant est connu ; les ACK de cette
+séquence sont traités localement. En cas d'absence d'ACK, la séquence se termine
+sur expiration du délai et le proxy reprend.
+
+### Capturer les échanges du clavier
+
+1. Installer la version du composant à examiner et ouvrir les journaux ESPHome.
+2. Laisser l'installation au repos une dizaine de secondes pour voir le trafic
+   périodique.
+3. Appuyer une fois sur la touche de changement de mode du clavier, attendre
+   quelques secondes et noter le mode affiché dans Home Assistant. Répéter
+   jusqu'à avoir observé les trois modes ; ne faire aucune autre action pendant
+   cette capture.
+4. Attendre encore une dizaine de secondes, puis enregistrer et partager le
+   journal complet, avec les horodatages et les lignes de démarrage.
+
+Avec les journaux DEBUG, `UART2 RX keyboard` identifie les trames reçues du
+clavier et `UART2 TX display` les trames transmises au clavier. Les erreurs de
+checksum précisent leur source (`keyboard UART2` ou `VMC UART1`). Pour capturer
+ces trames, régler le niveau de journalisation ESPHome à `DEBUG`. Si une
+ancienne version du composant semble encore chargée, nettoyer les fichiers de
+compilation avant de compiler et installer la nouvelle version.
 
 ## Protocole série
 
@@ -324,8 +353,7 @@ tous ses modes ont été validés sur la machine. Les essais de pilotage restent
 - Commande du bypass en fonctionnement normal.
 - Validation sur la machine des modes soufflage seul, extraction seule
   et double flux.
-- Fonctionnement du clavier d'origine en parallèle, ou mise en place
-  d'un relais série si cela est techniquement possible.
+- Validation sur la durée des échanges simultanés du clavier d'origine et de Home Assistant via le proxy UART.
 
 ## Plan de développement
 
@@ -337,7 +365,7 @@ tous ses modes ont été validés sur la machine. Les essais de pilotage restent
 6. [x] Corriger le décodage de l'état du préchauffage.
 7. [ ] Tester les trois modes de ventilation depuis Home Assistant.
 8. [ ] Identifier une commande normale et sûre du bypass.
-9. [ ] Étudier la possibilité de conserver le clavier d'origine.
+9. [ ] Valider les échanges simultanés du clavier d'origine et de Home Assistant via le proxy UART.
 10. [ ] Compléter la documentation du câblage et des entités Home Assistant.
 
 ## Sécurité et précautions
@@ -366,13 +394,23 @@ tous ses modes ont été validés sur la machine. Les essais de pilotage restent
 - [x] Service logiciel de sélection soufflage / extraction présent.
 - [ ] Validation pratique des trois modes de ventilation.
 - [ ] Commande du bypass en fonctionnement normal.
-- [ ] Clavier d'origine utilisable en parallèle.
+- [ ] Valider la cohabitation du clavier et des commandes Home Assistant sur l'installation réelle.
 
-Le montage actuel remplace le clavier sur X6. Le fonctionnement simultané
-du clavier et de l'ESP32 n'est pas encore établi.
+Le montage d'essai utilise l'UART1 vers la VMC (X6) et l'UART2 vers le clavier.
+Le proxy relaie les trames et ajoute des journaux DEBUG dédiés pour faciliter
+l'analyse des échanges. La cohabitation reste à confirmer par des captures
+et des essais prolongés.
 
 ---
 
 Projet personnel de rétro-ingénierie et d'intégration domotique.
 La compatibilité, les commandes et les limites de fonctionnement restent
 à confirmer sur le matériel réel.
+
+
+## Maintenance de la documentation
+
+À chaque modification du pilote, mettre à jour ce README dans le même changement
+si le comportement, le câblage, les commandes ou les diagnostics décrits ici
+évoluent. Vérifier systématiquement que les sections UART/proxy, séquence des
+presets et procédure de capture restent conformes au code et à l'installation.
