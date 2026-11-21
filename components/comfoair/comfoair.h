@@ -309,7 +309,7 @@ public:
     while (!proxy_data_pending_ && !preset_sequence_active_ &&
            uart_proxy_.available() != 0) {
       uart_proxy_.read_byte(&proxy_data_[proxy_data_index_]);
-      auto check = check_byte_(proxy_data_, proxy_data_index_, proxy_encountered_seven_);
+      auto check = check_byte_(proxy_data_, proxy_data_index_, proxy_encountered_seven_, "keyboard UART2");
       if (!check.has_value()) {
         ESP_LOGV(TAG, "Proxying command 0x%02X from confosense with %i bytes.",
                  proxy_data_[COMMAND_IDX_MSG_ID], proxy_data_index_ + 1);
@@ -334,7 +334,7 @@ public:
     while (available() != 0) {
       read_byte(&data_[data_index_]);
       last_uart_rx_ms_ = millis();
-      auto check = check_byte_(data_, data_index_, encountered_seven_);
+      auto check = check_byte_(data_, data_index_, encountered_seven_, "VMC UART1");
       if (!check.has_value()) {
         ESP_LOGV(TAG, "Response 0x%02X from confosense with %i bytes.",
                  data_[COMMAND_IDX_MSG_ID], data_index_ + 1);
@@ -511,7 +511,7 @@ protected:
     return sum;
   }
 
-  optional<bool> check_byte_(uint8_t* data, uint8_t &index, bool &encountered_seven) {
+  optional<bool> check_byte_(uint8_t* data, uint8_t &index, bool &encountered_seven, const char *source) {
     const uint8_t byte = data[index];
 
     if (index == 0) {
@@ -535,7 +535,7 @@ protected:
     uint8_t data_length = data[COMMAND_IDX_DATA];
 
     if ((COMMAND_LEN_HEAD + data_length + COMMAND_LEN_TAIL) > sizeof(data_)) {
-      ESP_LOGW(TAG, "ComfoAir message too large");
+      ESP_LOGW(TAG, "%s message too large", source);
       return false;
     }
 
@@ -549,7 +549,7 @@ protected:
         encountered_seven = true;
       } else {
         if (encountered_seven)
-          ESP_LOGW(TAG, "No 0x07 after another one encountered %02X instead at index %u.", (unsigned) byte, (unsigned) index);
+          ESP_LOGW(TAG, "%s: No 0x07 after another one; got %02X at index %u.", source, (unsigned) byte, (unsigned) index);
         encountered_seven = false;
       }
       return true;
@@ -561,7 +561,7 @@ protected:
       if (checksum != byte) {
         //ESP_LOG_BUFFER_HEX(TAG, data_, index+1);
         //[10:58:52][W][comfoair:389]: ComfoAir Checksum doesn't match: 0x07!=0xDD (4 3E 09 FA 07 07 00 00 C8)
-        ESP_LOGW(TAG, "Checksum mismatch: r:0x%02X!=c:0x%02X (l:%d cmd:%02X [%02X  %02X %02X  %02X %02X  %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X])", byte, checksum, data_length, data[COMMAND_IDX_MSG_ID], data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25]);
+        ESP_LOGW(TAG, "%s checksum mismatch: r:0x%02X!=c:0x%02X (l:%d cmd:%02X [%02X  %02X %02X  %02X %02X  %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X])", source, byte, checksum, data_length, data[COMMAND_IDX_MSG_ID], data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25]);
         // Still can't find what is wrong with those checksums.
         //if (data[COMMAND_IDX_MSG_ID] == 0x3e || data[COMMAND_IDX_MSG_ID] == 0xe6 || data[COMMAND_IDX_MSG_ID] == 0xec)
         //  return true;
