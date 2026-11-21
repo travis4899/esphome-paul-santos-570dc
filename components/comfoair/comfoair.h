@@ -230,6 +230,11 @@ public:
   }
 
   void update() override {
+    if (controller_command_in_flight_) {
+      ESP_LOGV(TAG, "Skipping poll while a controller response is pending");
+      return;
+    }
+
     switch(update_counter_) {
       case -4:
         write_command_(CMD_GET_BOOTLOADER_VERSION, nullptr, 0);
@@ -281,6 +286,14 @@ public:
   }
 
   void loop() override {
+    if (controller_command_in_flight_ &&
+        (uint32_t) (millis() - controller_command_started_ms_) >= 750) {
+      ESP_LOGW(TAG, "Controller response timeout; resuming serialized UART traffic");
+      controller_command_in_flight_ = false;
+      data_index_ = 0;
+      encountered_seven_ = false;
+    }
+
     if (preset_sequence_active_ && !preset_mode_command_pending_ &&
         (uint32_t) (millis() - preset_command_started_ms_) >= 1000) {
       ESP_LOGW(TAG, "Preset ACK timeout; resuming keyboard proxy");
@@ -300,9 +313,11 @@ public:
       if (!check.has_value()) {
         ESP_LOGV(TAG, "Proxying command 0x%02X from confosense with %i bytes.",
                  proxy_data_[COMMAND_IDX_MSG_ID], proxy_data_index_ + 1);
-        if (data_index_ == 0) {
+        if (data_index_ == 0 && !controller_command_in_flight_) {
           write_array(proxy_data_, proxy_data_index_ + 1);
           flush();
+          controller_command_in_flight_ = true;
+          controller_command_started_ms_ = millis();
           proxy_data_index_ = 0;
         } else {
           proxy_data_pending_ = true;
@@ -324,6 +339,7 @@ public:
         ESP_LOGV(TAG, "Response 0x%02X from confosense with %i bytes.",
                  data_[COMMAND_IDX_MSG_ID], data_index_ + 1);
 
+        controller_command_in_flight_ = false;
         bool forward_response = true;
         if (data_[COMMAND_ID_ACK] == COMMAND_ACK) {
           if (preset_waiting_ack_) {
@@ -358,10 +374,13 @@ public:
         }
 
         data_index_ = 0;
-        if (proxy_data_pending_ && !preset_sequence_active_) {
+        if (proxy_data_pending_ && !preset_sequence_active_ &&
+            !controller_command_in_flight_) {
           proxy_data_pending_ = false;
           write_array(proxy_data_, proxy_data_index_ + 1);
           flush();
+          controller_command_in_flight_ = true;
+          controller_command_started_ms_ = millis();
           proxy_data_index_ = 0;
         }
       } else if (!*check) {
@@ -373,7 +392,8 @@ public:
     }
 
     // Do not put the preset write in the middle of a controller response.
-    if (preset_mode_command_pending_ &&
+    if (preset_mode_command_pending_ && !controller_command_in_flight_ &&
+        data_index_ == 0 &&
         (uint32_t) (millis() - last_uart_rx_ms_) >= 100) {
       preset_mode_command_pending_ = false;
       preset_waiting_ack_ = true;
@@ -381,6 +401,16 @@ public:
       ESP_LOGD(TAG, "Sending preset command after UART idle");
       write_command_(CMD_SET_VENTILATION_LEVEL, preset_mode_command_data_,
                      sizeof(preset_mode_command_data_));
+    }
+
+    if (proxy_data_pending_ && !preset_sequence_active_ &&
+        !controller_command_in_flight_ && data_index_ == 0) {
+      proxy_data_pending_ = false;
+      write_array(proxy_data_, proxy_data_index_ + 1);
+      flush();
+      controller_command_in_flight_ = true;
+      controller_command_started_ms_ = millis();
+      proxy_data_index_ = 0;
     }
   }
 
@@ -434,6 +464,8 @@ protected:
   }
 
   void write_command_(const uint8_t command, const uint8_t *command_data, uint8_t command_data_length) {
+    controller_command_in_flight_ = true;
+    controller_command_started_ms_ = millis();
     write_byte(COMMAND_PREFIX);
     write_byte(COMMAND_HEAD);
     write_byte(0x00);
@@ -1130,6 +1162,8 @@ protected:
   bool preset_level_waiting_ack_{false};
   bool preset_sequence_active_{false};
   uint32_t preset_command_started_ms_{0};
+  bool controller_command_in_flight_{false};
+  uint32_t controller_command_started_ms_{0};
   uint8_t preset_mode_command_data_[CMD_SET_VENTILATION_LEVEL_LENGTH]{};
   uint32_t last_uart_rx_ms_{0};
   bool preset_level_pending_{false};
