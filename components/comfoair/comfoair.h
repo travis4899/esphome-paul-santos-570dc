@@ -77,6 +77,8 @@ public:
   void control_set_operation_mode(bool exhaust, bool supply) {
     ESP_LOGI(TAG, "Setting operation mode target exhaust: %i, supply: %i", exhaust, supply);
     preset_level_pending_ = false;
+    preset_level_waiting_ack_ = false;
+    preset_sequence_active_ = true;
     if (ventilation_level != nullptr && ventilation_level->has_state()) {
       const float current_level = ventilation_level->state;
       if (current_level >= -1.0f && current_level <= 3.0f) {
@@ -279,14 +281,27 @@ public:
   }
 
   void loop() override {
-    // Proxy commands from the display.
-    while(uart_proxy_.available() != 0) {
+    if (preset_sequence_active_ && !preset_mode_command_pending_ &&
+        (uint32_t) (millis() - preset_command_started_ms_) >= 1000) {
+      ESP_LOGW(TAG, "Preset ACK timeout; resuming keyboard proxy");
+      preset_waiting_ack_ = false;
+      preset_level_waiting_ack_ = false;
+      preset_level_pending_ = false;
+      preset_sequence_active_ = false;
+    }
+
+    // Keep the display parser independent from the ComfoAir parser. While a
+    // custom preset is being changed, leave keyboard frames in the UART RX
+    // buffer so they cannot be interleaved with the 0xCF/0x99 transaction.
+    while (!proxy_data_pending_ && !preset_sequence_active_ &&
+           uart_proxy_.available() != 0) {
       uart_proxy_.read_byte(&proxy_data_[proxy_data_index_]);
-      auto check = check_byte_(proxy_data_, proxy_data_index_);
+      auto check = check_byte_(proxy_data_, proxy_data_index_, proxy_encountered_seven_);
       if (!check.has_value()) {
-        ESP_LOGV(TAG, "Proxying command 0x%02X from confosense with %i bytes.", proxy_data_[COMMAND_IDX_MSG_ID], proxy_data_index_+1);
+        ESP_LOGV(TAG, "Proxying command 0x%02X from confosense with %i bytes.",
+                 proxy_data_[COMMAND_IDX_MSG_ID], proxy_data_index_ + 1);
         if (data_index_ == 0) {
-          write_array(proxy_data_, proxy_data_index_+1);
+          write_array(proxy_data_, proxy_data_index_ + 1);
           flush();
           proxy_data_index_ = 0;
         } else {
@@ -294,8 +309,7 @@ public:
         }
         break;
       } else if (!*check) {
-        // wrong data
-        ESP_LOGV(TAG, "Byte %i of received data frame is invalid.", proxy_data_index_);
+        ESP_LOGV(TAG, "Invalid proxy byte at index %i.", proxy_data_index_);
         proxy_data_index_ = 0;
       } else {
         proxy_data_index_++;
@@ -305,47 +319,65 @@ public:
     while (available() != 0) {
       read_byte(&data_[data_index_]);
       last_uart_rx_ms_ = millis();
-      auto check = check_byte_(data_, data_index_);
+      auto check = check_byte_(data_, data_index_, encountered_seven_);
       if (!check.has_value()) {
-        // finished
-        ESP_LOGV(TAG, "Response 0x%02X from confosense with %i bytes.", data_[COMMAND_IDX_MSG_ID], data_index_+1);
+        ESP_LOGV(TAG, "Response 0x%02X from confosense with %i bytes.",
+                 data_[COMMAND_IDX_MSG_ID], data_index_ + 1);
+
+        bool forward_response = true;
         if (data_[COMMAND_ID_ACK] == COMMAND_ACK) {
           if (preset_waiting_ack_) {
+            // This ACK belongs to Home Assistant's preset write. It is not a
+            // keyboard response and must not be injected into the display UART.
+            forward_response = false;
             preset_waiting_ack_ = false;
-            preset_level_pending_ = false;
-            ESP_LOGD(TAG, "Preset command acknowledged; restoring level %u", preset_level_after_mode_);
-            uint8_t command[CMD_SET_LEVEL_LENGTH] = {preset_level_after_mode_};
-            write_command_(CMD_SET_LEVEL, command, sizeof(command));
+            if (preset_level_pending_) {
+              preset_level_pending_ = false;
+              preset_level_waiting_ack_ = true;
+              ESP_LOGD(TAG, "Preset command acknowledged; restoring level %u",
+                       preset_level_after_mode_);
+              uint8_t command[CMD_SET_LEVEL_LENGTH] = {preset_level_after_mode_};
+              preset_command_started_ms_ = millis();
+              write_command_(CMD_SET_LEVEL, command, sizeof(command));
+            } else {
+              preset_sequence_active_ = false;
+            }
+          } else if (preset_level_waiting_ack_) {
+            // Also consume the ACK for the level restore locally.
+            forward_response = false;
+            preset_level_waiting_ack_ = false;
+            preset_sequence_active_ = false;
           }
         } else {
           parse_data_();
         }
-        // Proxy result to the display.
-        uart_proxy_.write_array(data_, data_index_+1);
-        uart_proxy_.flush();
-        if (proxy_data_pending_) {
+
+        if (forward_response) {
+          uart_proxy_.write_array(data_, data_index_ + 1);
+          uart_proxy_.flush();
+        }
+
+        data_index_ = 0;
+        if (proxy_data_pending_ && !preset_sequence_active_) {
           proxy_data_pending_ = false;
-          write_array(proxy_data_, proxy_data_index_+1);
+          write_array(proxy_data_, proxy_data_index_ + 1);
           flush();
           proxy_data_index_ = 0;
         }
-        data_index_ = 0;
       } else if (!*check) {
-        // wrong data
-        ESP_LOGV(TAG, "Byte %i of received data frame is invalid.", data_index_);
+        ESP_LOGV(TAG, "Invalid ComfoAir byte at index %i.", data_index_);
         data_index_ = 0;
       } else {
-        // next byte
         data_index_++;
       }
     }
 
-    // Keep preset writes out of the middle of a controller response. An ACK
-    // inserted into a response cannot be parsed as a standalone frame.
+    // Do not put the preset write in the middle of a controller response.
     if (preset_mode_command_pending_ &&
         (uint32_t) (millis() - last_uart_rx_ms_) >= 100) {
       preset_mode_command_pending_ = false;
-      preset_waiting_ack_ = preset_level_pending_;
+      preset_waiting_ack_ = true;
+      preset_command_started_ms_ = millis();
       ESP_LOGD(TAG, "Sending preset command after UART idle");
       write_command_(CMD_SET_VENTILATION_LEVEL, preset_mode_command_data_,
                      sizeof(preset_mode_command_data_));
@@ -447,11 +479,11 @@ protected:
     return sum;
   }
 
-  optional<bool> check_byte_(uint8_t* data, uint8_t &index) {
+  optional<bool> check_byte_(uint8_t* data, uint8_t &index, bool &encountered_seven) {
     const uint8_t byte = data[index];
 
     if (index == 0) {
-      encountered_seven_ = false;
+      encountered_seven = false;
       return byte == COMMAND_PREFIX;
     }      
 
@@ -475,18 +507,18 @@ protected:
       return false;
     }
 
-    if (index < COMMAND_LEN_HEAD + data_length || encountered_seven_) {
+    if (index < COMMAND_LEN_HEAD + data_length || encountered_seven) {
       if (byte == 0x07) {
-        if (encountered_seven_) {
-          encountered_seven_ = false;
+        if (encountered_seven) {
+          encountered_seven = false;
           index--;
           return true;
         }
-        encountered_seven_ = true;
+        encountered_seven = true;
       } else {
-        if (encountered_seven_)
+        if (encountered_seven)
           ESP_LOGW(TAG, "No 0x07 after another one encountered %02X instead at index %u.", (unsigned) byte, (unsigned) index);
-        encountered_seven_ = false;
+        encountered_seven = false;
       }
       return true;
     }
@@ -1091,9 +1123,13 @@ protected:
   uint8_t proxy_data_[30];
   uint8_t proxy_data_index_{0};
   bool encountered_seven_{false};
+  bool proxy_encountered_seven_{false};
   bool proxy_data_pending_{false};
   bool preset_mode_command_pending_{false};
   bool preset_waiting_ack_{false};
+  bool preset_level_waiting_ack_{false};
+  bool preset_sequence_active_{false};
+  uint32_t preset_command_started_ms_{0};
   uint8_t preset_mode_command_data_[CMD_SET_VENTILATION_LEVEL_LENGTH]{};
   uint32_t last_uart_rx_ms_{0};
   bool preset_level_pending_{false};
